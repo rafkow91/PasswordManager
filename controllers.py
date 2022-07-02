@@ -75,20 +75,31 @@ class Database:
 
     def get_category_by_name(self, category_name: str) -> list:
         with Session(self.engine) as session:
-            categories = session.query(Category).filter(Category.name.like(f'%{category_name}%')).all()
-            
+            categories = session.query(Category).filter(
+                Category.name.like(f'%{category_name}%')).all()
+
             to_return = []
             for category in categories:
                 to_return.append(category.id)
 
         return to_return
 
-    def get_account_by_website(self, website_name: str) -> list:
+    def search_in_website_name(self, website_name: str) -> list:
         with Session(self.engine) as session:
-            websites = session.query(Account).filter(Account.website.like(f'%{website_name}%')).all()
-            
-            to_return = []
-            for website in websites:
-                to_return.append(website.id)
+            return session.query(Account).filter(Account.website.like(f'%{website_name}%')).all()
 
+    def search_in_username(self, username: str) -> list:
+        with Session(self.engine) as session:
+            return session.query(Account).filter(Account.login.like(f'%{username}%')).all()
+
+    def search_in_category_name(self, category_name: str) -> list:
+        category_ids = self.get_category_by_name(category_name)
+
+        to_return = []
+
+        for category_id in category_ids:
+            with Session(self.engine) as session:
+                accounts = session.query(Account).filter(Account.category_id == category_id).all()
+            for account in accounts:
+                to_return.append(account)
         return to_return
