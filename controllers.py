@@ -1,6 +1,12 @@
-from sqlalchemy import ForeignKey, Identity, create_engine, Table, Column, Integer, String, MetaData, text
-from sqlalchemy.orm import declarative_base, relationship, Session, backref
+from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, text
+from sqlalchemy.orm import Session
 from models import Account, Category
+
+from base64 import urlsafe_b64encode
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.fernet import Fernet
 
 
 class Database:
@@ -32,15 +38,17 @@ class Database:
         meta.create_all(engine)
 
     def add_account(self, login: str, password: str, website: str, category_name: str) -> None:
-        encrypted_password = password
-        category = self.get_category_by_name(category_name)
-        if category is None:
-            category = Category(name=category_name)
+        encrypted_password = PasswordEncryptor(password)
+
+        try:
+            category = self.get_category_by_name(category_name)[0]
+        except IndexError:
+            category = Category(name=category_name.lower())
 
         with Session(self.engine) as session:
             new_account = Account(
                 login=login,
-                password=password,
+                password=encrypted_password.encrypt(),
                 website=website,
                 category=category
             )
@@ -50,9 +58,13 @@ class Database:
 
     def add_category(self, name: str) -> None:
         with Session(self.engine) as session:
-            new_category = Category(name=name.upper())
-            session.add(new_category)
-            session.commit()
+            existed_categories = session.query(Category).all()
+            categories = [category.name for category in existed_categories]
+
+            if name.lower() not in categories:
+                new_category = Category(name=name.lower())
+                session.add(new_category)
+                session.commit()
 
     def get_all_accounts(self) -> list:
         with self.engine.connect() as connection:
@@ -70,10 +82,10 @@ class Database:
             accounts = cursor.fetchall()
         return accounts
 
-    def get_account(self, login: str, password: str, website: str, category_name: str, account_id: int = None) -> Account:
+    def get_password(self, account_id: int) -> str:
         pass
 
-    def get_category_by_name(self, category_name: str) -> list:
+    def get_category_id_by_name(self, category_name: str) -> list:
         with Session(self.engine) as session:
             categories = session.query(Category).filter(
                 Category.name.like(f'%{category_name}%')).all()
@@ -84,6 +96,13 @@ class Database:
 
         return to_return
 
+    def get_category_by_name(self, category_name: str) -> Category:
+        with Session(self.engine) as session:
+            categories = session.query(Category).filter(
+                Category.name.like(f'%{category_name}%')).all()
+
+        return categories
+
     def search_in_website_name(self, website_name: str) -> list:
         with Session(self.engine) as session:
             return session.query(Account).filter(Account.website.like(f'%{website_name}%')).all()
@@ -93,7 +112,7 @@ class Database:
             return session.query(Account).filter(Account.login.like(f'%{username}%')).all()
 
     def search_in_category_name(self, category_name: str) -> list:
-        category_ids = self.get_category_by_name(category_name)
+        category_ids = self.get_category_id_by_name(category_name)
 
         to_return = []
 
@@ -103,3 +122,26 @@ class Database:
             for account in accounts:
                 to_return.append(account)
         return to_return
+
+
+class PasswordEncryptor:
+    def __init__(self, password) -> None:
+        self.password = password
+        self.fernet = self._generate_fernet()
+
+    def _generate_fernet(self) -> bytes:
+        salt = 'isDiXhnF$rMer3C'
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA512,
+            length=32,
+            salt=salt.encode('utf-8'),
+            iterations=390000
+        )
+
+        return Fernet(urlsafe_b64encode(kdf.derive(bytes(self.password, 'utf-8'))))
+
+    def encrypt(self):
+        return self.fernet.encrypt(self.password.encode('utf-8'))
+
+    def decrypt(self):
+        return self.fernet.decrypt(self.password.encode('utf-8'))

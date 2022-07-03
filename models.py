@@ -1,5 +1,5 @@
 from sqlalchemy import ForeignKey, Column, Integer, String
-from sqlalchemy.orm import declarative_base, relationship, backref
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -17,4 +17,4 @@ class Account(Base):
     password = Column(String(255))
     website = Column(String(50))
     category_id = Column(Integer, ForeignKey('categories.id'))
-    category = relationship('Category', backref=backref('categories', uselist=False))
+    category = relationship('Category', backref='categories')
