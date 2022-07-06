@@ -76,6 +76,9 @@ class Database:
                 new_category = Category(name=name.lower())
                 session.add(new_category)
                 session.commit()
+                return True
+        
+        return False
 
     def get_all_accounts(self) -> list:
         with Session(self.engine) as session:
@@ -88,6 +91,10 @@ class Database:
             account = session.query(Account).filter(Account.id == account_id).first()
         password_encryptor = PasswordEncryptor(account.password)
         return password_encryptor.decrypt()
+
+    def get_all_categories(self) -> list:
+        with Session(self.engine) as session:
+            return session.query(Category).all()
 
     def get_category_id_by_name(self, category_name: str) -> list:
         with Session(self.engine) as session:

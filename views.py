@@ -2,8 +2,6 @@ from tkinter import END, IntVar, Tk
 from tkinter.font import BOLD, ITALIC
 from tkinter.ttk import Button, Entry, Notebook, Frame, Treeview, Label, Radiobutton
 
-from click import password_option
-
 from controllers import Database
 
 
@@ -17,25 +15,24 @@ class Application:
     def run(self) -> None:
         self.root.geometry('620x550')
         self.root.title('Password manager by rafkow91')
-        for i in range(0, 6):
-            self.root.rowconfigure(i, minsize=30)
-            self.root.columnconfigure(i, minsize=30)
+        # for i in range(0, 6):
+        #     self.root.rowconfigure(i, minsize=30)
+        #     self.root.columnconfigure(i, minsize=30)
 
         # Tabs
         tabsystem = Notebook(self.root)
         self.saved_passwords_tab = Frame(tabsystem)
         self.add_password_tab = Frame(tabsystem)
         self.categories_tab = Frame(tabsystem)
-        self.add_category_tab = Frame(tabsystem)
 
         tabsystem.add(self.saved_passwords_tab, text='Saved passwords')
         tabsystem.add(self.add_password_tab, text='Add new password')
         tabsystem.add(self.categories_tab, text='Categories')
-        tabsystem.add(self.add_category_tab, text='Add new category')
         tabsystem.pack(expand=1, fill='both')
 
         self._render_saved_passwords_tab()
         self._render_add_password_tab()
+        self._render_categories_tab()
 
         # Draw the window
         self.root.mainloop()
@@ -53,7 +50,6 @@ class Application:
             password = self.database.get_password(selected_account_id)
             self.root.clipboard_clear()
             self.root.clipboard_append(password)
-
 
         def on_click_filter_button(event):
             def search_in_all_columns(event):
@@ -241,5 +237,92 @@ class Application:
 
         # Add button
         button = Button(add_button_frame, text='Add new password')
+        button.bind('<Button-1>', on_click_add_button)
+        button.grid(column=4, row=1, pady=15)
+
+    def _render_categories_tab(self):
+        self.categories_list = self.database.get_all_categories()
+
+        # Function used in method
+        def on_treeview_select(event):
+            try:
+                item = self.saved_passwords_tree.selection()[0]
+                category_name = self.saved_passwords_tree.item(item, 'values')[0]
+            except IndexError:
+                pass
+            self.root.clipboard_clear()
+            self.root.clipboard_append(category_name)
+
+        def on_click_refresh_button(event):
+            self.categories_list = self.database.get_all_categories()
+            generate_tree(self.categories_list)
+
+        def on_click_add_button(event):
+            result = self.database.add_category(
+                name=add_category_entry.get()
+            )
+
+            if not result:
+                error_label['text'] = 'THIS CATEGORY EXIST IN DATABASE'
+            else:
+                error_label['text'] = ''
+                add_category_entry.delete(0, END)
+
+        def generate_tree(categories):
+            for i in self.categories_tree.get_children():
+                self.categories_tree.delete(i)
+            for category in categories:
+                self.categories_tree.insert(
+                    '', 'end',
+                    values=(category.name))
+
+        # Frames
+        header = Frame(self.categories_tab)
+        header.pack()
+
+        header2 = Frame(self.categories_tab)
+        header2.pack()
+
+        main_content = Frame(self.categories_tab)
+        main_content.pack()
+
+        add_category_frame = Frame(self.categories_tab)
+        add_category_frame.pack()
+
+        # Header
+        categories_label = Label(header, text='Categories', font=('', 15, BOLD))
+        categories_label.grid(pady=10)
+
+        error_label = Label(header, text='', font=('', 8, ITALIC, BOLD), foreground='red')
+        error_label.grid(row=1, pady=10)
+
+        # Refresh button
+        refresh_button = Button(header2, text='Refresh table')
+        refresh_button.bind('<Button-1>', on_click_refresh_button)
+        refresh_button.grid(column=10, row=1, pady=2, padx=130)
+
+        self.categories_tree = Treeview(
+            main_content,
+            columns=('name'),
+            show='headings',
+            height=15
+        )
+
+        self.categories_tree.heading('name', text='Category name')
+
+        generate_tree(self.categories_list)
+
+        self.categories_tree.bind('<<TreeviewSelect>>', on_treeview_select)
+        self.categories_tree.grid(column=0, row=1, columnspan=11)
+
+        # Filter phrase
+        add_category_entry_label = Label(add_category_frame, text='Add new category: ')
+        add_category_entry_label.grid(column=0, row=0, padx=2)
+
+        add_category_entry = Entry(add_category_frame)
+        add_category_entry.grid(column=1, row=0, columnspan=3)
+
+        # Add button
+        button = Button(add_category_frame, text='Add')
         button.bind('<Button-1>', on_click_add_button)
         button.grid(column=4, row=1, pady=15)
