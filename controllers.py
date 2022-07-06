@@ -1,12 +1,15 @@
-from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, text
-from sqlalchemy.orm import Session
-from models import Account, Category
-
 from base64 import urlsafe_b64encode
+from random import sample
+from string import ascii_letters
 
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.fernet import Fernet
+from dotenv import dotenv_values
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+from sqlalchemy.orm import Session
+
+from models import Account, Category
 
 
 class Database:
@@ -37,7 +40,13 @@ class Database:
 
         meta.create_all(engine)
 
-    def add_account(self, login: str, password: str, website: str, category_name: str) -> None:
+    def add_account(self, login: str, password: str, website: str, category_name: str) -> bool:
+        accounts = self.search_in_website_name(website)
+        accounts_list = [account.login for account in accounts]
+
+        if login in accounts_list:
+            return False
+
         encrypted_password = PasswordEncryptor(password)
 
         try:
@@ -56,6 +65,8 @@ class Database:
             session.add(new_account)
             session.commit()
 
+        return True
+
     def add_category(self, name: str) -> None:
         with Session(self.engine) as session:
             existed_categories = session.query(Category).all()
@@ -67,23 +78,16 @@ class Database:
                 session.commit()
 
     def get_all_accounts(self) -> list:
-        with self.engine.connect() as connection:
-            cursor = connection.execute(text(
-                '''
-                    SELECT 
-                        a.id,
-                        a.login,
-                        a.website,
-                        c.name
-                    FROM accounts a
-                    LEFT JOIN categories c
-                    ON a.category_id = c.id
-                '''))
-            accounts = cursor.fetchall()
+        with Session(self.engine) as session:
+            accounts = session.query(Account).all()
+
         return accounts
 
     def get_password(self, account_id: int) -> str:
-        pass
+        with Session(self.engine) as session:
+            account = session.query(Account).filter(Account.id == account_id).first()
+        password_encryptor = PasswordEncryptor(account.password)
+        return password_encryptor.decrypt()
 
     def get_category_id_by_name(self, category_name: str) -> list:
         with Session(self.engine) as session:
@@ -129,8 +133,21 @@ class PasswordEncryptor:
         self.password = password
         self.fernet = self._generate_fernet()
 
+    @staticmethod
+    def _get_data_from_env(data: str) -> str:
+        while True:
+            try:
+                my_data = dotenv_values()[data]
+                break
+            except KeyError:
+                with open('.env', mode='a', encoding='utf-8') as settings:
+                    settings.write(f'{data}="{"".join(sample(ascii_letters, k=10))}"\n')
+
+        return my_data
+
     def _generate_fernet(self) -> bytes:
-        salt = 'isDiXhnF$rMer3C'
+        salt = self._get_data_from_env('salt')
+        password = self._get_data_from_env('password')
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA512,
             length=32,
@@ -138,10 +155,10 @@ class PasswordEncryptor:
             iterations=390000
         )
 
-        return Fernet(urlsafe_b64encode(kdf.derive(bytes(self.password, 'utf-8'))))
+        return Fernet(urlsafe_b64encode(kdf.derive(password.encode('utf-8'))))
 
     def encrypt(self):
         return self.fernet.encrypt(self.password.encode('utf-8'))
 
     def decrypt(self):
-        return self.fernet.decrypt(self.password.encode('utf-8'))
+        return self.fernet.decrypt(self.password)

@@ -17,4 +17,4 @@ class Account(Base):
     password = Column(String(255))
     website = Column(String(50))
     category_id = Column(Integer, ForeignKey('categories.id'))
-    category = relationship('Category', backref='categories')
+    category = relationship('Category', backref='categories', lazy='subquery')

@@ -1,8 +1,10 @@
-from tkinter import END, RIGHT, IntVar, StringVar, Tk
-from tkinter.font import BOLD
+from tkinter import END, IntVar, Tk
+from tkinter.font import BOLD, ITALIC
 from tkinter.ttk import Button, Entry, Notebook, Frame, Treeview, Label, Radiobutton
 
-from controllers import Database, PasswordEncryptor
+from click import password_option
+
+from controllers import Database
 
 
 class Application:
@@ -45,9 +47,13 @@ class Application:
         def on_treeview_select(event):
             try:
                 item = self.saved_passwords_tree.selection()[0]
-                print(self.saved_passwords_tree.item(item, 'values'))
+                selected_account_id = self.saved_passwords_tree.item(item, 'values')[3]
             except IndexError:
                 pass
+            password = self.database.get_password(selected_account_id)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(password)
+
 
         def on_click_filter_button(event):
             def search_in_all_columns(event):
@@ -68,9 +74,6 @@ class Application:
 
             passwords_list = choice[self.filter_choice.get()](filter_entry.get())
 
-            for konto in passwords_list:
-                print(f'{konto} -> {type(konto)}')
-
             generate_tree(passwords_list)
 
         def on_click_reset_button(event):
@@ -85,10 +88,10 @@ class Application:
                 self.saved_passwords_tree.insert(
                     '', 'end',
                     values=(
-                        password[2],
-                        password[1],
-                        password[3],
-                        password[0],
+                        password.website,
+                        password.login,
+                        password.category.name,
+                        password.id,
                     ))
 
         # Frames
@@ -182,15 +185,21 @@ class Application:
 
     def _render_add_password_tab(self):
         def on_click_add_button(event):
-            password_encryptor = PasswordEncryptor(password_entry.get())
-            self.database.add_account(
+            result = self.database.add_account(
                 login=login_entry.get(),
-                password=password_encryptor.encrypt(),
+                password=password_entry.get(),
                 website=website_entry.get(),
                 category_name=category_entry.get()
             )
-            login_entry.delete(0, END)
-            print('add new account')
+
+            if not result:
+                error_label['text'] = 'THIS ACCOUNT EXIST IN DATABASE'
+            else:
+                error_label['text'] = ''
+                login_entry.delete(0, END)
+                password_entry.delete(0, END)
+                website_entry.delete(0, END)
+                category_entry.delete(0, END)
 
         # Frames
         header = Frame(self.add_password_tab)
@@ -204,7 +213,10 @@ class Application:
 
         # Header
         add_password_label = Label(header, text='Add new password', font=('', 15, BOLD))
-        add_password_label.grid(pady=10)
+        add_password_label.grid(row=0, pady=10)
+
+        error_label = Label(header, text='', font=('', 8, ITALIC, BOLD), foreground='red')
+        error_label.grid(row=1, pady=10)
 
         # Form
         login_label = Label(main_content, text='Login:')
@@ -214,7 +226,7 @@ class Application:
 
         password_label = Label(main_content, text='Password:')
         password_label.grid(column=0, row=1, pady=2, padx=5, sticky='e')
-        password_entry = Entry(main_content)
+        password_entry = Entry(main_content, show='*')
         password_entry.grid(column=1, row=1, pady=2)
 
         website_label = Label(main_content, text='Website:')
